@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @swagger
  * tags:
  *   name: Admin
@@ -8,14 +8,12 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+
 const db = require('../config/database');
 const config = require('../config/settings');
 const audit = require('../services/audit');
 const cacheService = require('../services/cache');
 const cacheManager = require('../services/cache-manager');
-const { generateNginxConfig } = require('../../../scripts/generate-nginx-conf');
-const { readNginxControl } = require('../../../scripts/nginx-control');
 const { authMiddleware, adminMiddleware, revokeAllUserTokens } = require('../middleware/auth');
 const { validatePassword } = require('../utils/password-policy');
 const keyChecker = require('../services/key-checker');
@@ -37,96 +35,16 @@ const transitScanner = require('../services/transit-scanner');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 const SERVER_CONFIG_FILE = path.join(PROJECT_ROOT, 'config', 'server.json');
-const NGINX_DIR = path.join(PROJECT_ROOT, 'nginx');
-const NGINX_START_SCRIPT = path.join(NGINX_DIR, 'start.js');
 
 function isValidPort(p) {
   const n = Number(p);
   return Number.isInteger(n) && n > 0 && n <= 65535;
 }
 
-function isNginxRunning() {
-  return new Promise((resolve) => {
-    if (process.platform === 'win32') {
-      execFile('tasklist', ['/FI', 'IMAGENAME eq nginx.exe', '/FO', 'CSV', '/NH'], { windowsHide: true }, (err, stdout) => {
-        if (err) return resolve(false);
-        resolve(stdout.toLowerCase().includes('nginx.exe'));
-      });
-    } else {
-      execFile('pgrep', ['nginx'], (err) => resolve(!err));
-    }
-  });
-}
-
-function getNginxProcessInfo() {
-  return new Promise((resolve) => {
-    if (process.platform === 'win32') {
-      const os = require('os');
-      const tmpFile = path.join(os.tmpdir(), `nginx-ps-${Date.now()}.json`);
-      const script = `Get-Process nginx -ErrorAction SilentlyContinue | Select-Object Path, Id | ConvertTo-Json -Compress | Out-File -FilePath '${tmpFile.replace(/'/g, "''")}' -Encoding utf8`;
-      execFile('powershell', ['-Command', script], { encoding: 'utf8', windowsHide: true }, (err) => {
-        if (err) return resolve([]);
-        try {
-          const data = JSON.parse(fs.readFileSync(tmpFile, 'utf8'));
-          fs.unlinkSync(tmpFile);
-          const list = Array.isArray(data) ? data : [data];
-          resolve(list.filter(p => p && p.Path).map(p => ({ pid: p.Id, path: p.Path })));
-        } catch (e) {
-          try { fs.unlinkSync(tmpFile); } catch (_) {}
-          resolve([]);
-        }
-      });
-    } else {
-      execFile('pgrep', ['nginx'], (err, stdout) => {
-        if (err) return resolve([]);
-        const pids = stdout.split('\n').map(s => s.trim()).filter(Boolean);
-        const results = [];
-        let pending = pids.length;
-        if (pending === 0) return resolve([]);
-        pids.forEach((pid) => {
-          execFile('readlink', [`/proc/${pid}/exe`], (err2, exePath) => {
-            results.push({ pid, path: err2 ? '' : (exePath || '').trim() });
-            pending--;
-            if (pending === 0) resolve(results);
-          });
-        });
-      });
-    }
-  });
-}
-
-function isValidAllowlistCidr(cidr) {
-  if (typeof cidr !== 'string') return false;
-  const [addr, prefix] = cidr.split('/');
-  if (!addr) return false;
-  // IPv4
-  const ipv4Parts = addr.split('.');
-  if (ipv4Parts.length === 4) {
-    for (const part of ipv4Parts) {
-      const n = parseInt(part, 10);
-      if (Number.isNaN(n) || n < 0 || n > 255) return false;
-    }
-    if (prefix !== undefined) {
-      const p = parseInt(prefix, 10);
-      if (Number.isNaN(p) || p < 0 || p > 32) return false;
-    }
-    return true;
-  }
-  // IPv6: accept a conservative subset via a simple regex
-  if (/^([0-9a-fA-F:]+)(\/(\d{1,3}))?$/.test(addr)) {
-    if (prefix !== undefined) {
-      const p = parseInt(prefix, 10);
-      if (Number.isNaN(p) || p < 0 || p > 128) return false;
-    }
-    return true;
-  }
-  return false;
-}
 
 function normalizeServerConfig(body, current) {
   const next = JSON.parse(JSON.stringify(current));
   if (!next.ports) next.ports = {};
-  if (!next.nginx) next.nginx = {};
 
   const portKeys = ['api', 'admin', 'user'];
   for (const key of portKeys) {
@@ -139,68 +57,7 @@ function normalizeServerConfig(body, current) {
     next.trust_proxy = body.trust_proxy === true || body.trust_proxy === 'true';
   }
 
-  if (body.nginx?.user_listen !== undefined) next.nginx.user_listen = Number(body.nginx.user_listen);
-  if (body.nginx?.admin_listen !== undefined) next.nginx.admin_listen = Number(body.nginx.admin_listen);
-  if (body.nginx?.server_name !== undefined) {
-    const raw = unescapeHtml(body.nginx.server_name);
-    next.nginx.server_name = typeof raw === 'string' ? raw.trim() : next.nginx.server_name;
-  }
-
-  // Nginx security settings are only accepted when the project controls the bundled Nginx.
-  const control = readNginxControl(PROJECT_ROOT);
-  if (control.controlled === true && body.nginx?.security) {
-    const s = body.nginx.security;
-    next.nginx.security = {
-      server_tokens: s.server_tokens === true,
-      security_headers: s.security_headers === true,
-      admin_ip_allowlist: Array.isArray(s.admin_ip_allowlist)
-        ? s.admin_ip_allowlist.filter(Boolean).map(unescapeHtml)
-        : [],
-      rate_limit: {
-        enabled: s.rate_limit?.enabled === true,
-        rps: Number(s.rate_limit?.rps) || 10,
-        burst: Number(s.rate_limit?.burst) || 20,
-      },
-      timeouts: {
-        client_body: Number(s.timeouts?.client_body) || 0,
-        client_header: Number(s.timeouts?.client_header) || 0,
-        send: Number(s.timeouts?.send) || 0,
-      },
-    };
-  }
-
   return next;
-}
-
-function validateSecurityConfig(cfg) {
-  const security = cfg.nginx?.security;
-  if (!security) return null;
-
-  if (security.admin_ip_allowlist) {
-    for (const cidr of security.admin_ip_allowlist) {
-      if (!isValidAllowlistCidr(cidr)) {
-        return `管理后台 IP 白名单包含无效 CIDR: ${cidr}`;
-      }
-    }
-  }
-
-  if (security.rate_limit) {
-    if (security.rate_limit.rps < 1 || security.rate_limit.rps > 10000) {
-      return '限速 rps 必须在 1-10000 之间';
-    }
-    if (security.rate_limit.burst < 1 || security.rate_limit.burst > 100000) {
-      return '限速 burst 必须在 1-100000 之间';
-    }
-  }
-
-  if (security.timeouts) {
-    const { client_body, client_header, send } = security.timeouts;
-    if (client_body && (client_body < 1 || client_body > 3600)) return 'client_body_timeout 超出范围';
-    if (client_header && (client_header < 1 || client_header > 3600)) return 'client_header_timeout 超出范围';
-    if (send && (send < 1 || send > 3600)) return 'send_timeout 超出范围';
-  }
-
-  return null;
 }
 
 function validateServerConfig(cfg) {
@@ -217,12 +74,7 @@ function validateServerConfig(cfg) {
   if (err) return err;
   err = check('Node.js User', cfg.ports?.user);
   if (err) return err;
-  err = check('Nginx User', cfg.nginx?.user_listen);
-  if (err) return err;
-  err = check('Nginx Admin', cfg.nginx?.admin_listen);
-  if (err) return err;
 
-  if (!cfg.nginx?.server_name) return 'Nginx server_name 不能为空';
   return null;
 }
 
@@ -231,18 +83,6 @@ function configRequiresRestart(before, after) {
   return before.ports.api !== after.ports.api
     || before.ports.admin !== after.ports.admin
     || before.ports.user !== after.ports.user;
-}
-
-function reloadNginx() {
-  return new Promise((resolve) => {
-    execFile('node', [NGINX_START_SCRIPT, '--reload'], { cwd: NGINX_DIR, windowsHide: true }, (err, stdout, stderr) => {
-      if (err) {
-        console.error('[Admin] Nginx reload failed:', err.message, stderr);
-        return resolve({ success: false, message: err.message || String(stderr) });
-      }
-      resolve({ success: true });
-    });
-  });
 }
 
 // Reverse the generic HTML escaping applied by the security middleware for
@@ -3001,8 +2841,8 @@ router.put('/settings', async (req, res) => {
       if (!item.url || typeof item.url !== 'string') {
         return res.status(400).json({ error: '每个网关地址必须包含 url 字段' });
       }
-      if (item.type && !['node', 'nginx'].includes(item.type)) {
-        return res.status(400).json({ error: '网关地址类型必须是 node 或 nginx' });
+      if (item.type && item.type !== 'node') {
+        return res.status(400).json({ error: '网关地址类型必须是 node' });
       }
     }
   }
@@ -3044,12 +2884,7 @@ router.get('/server-config', async (req, res) => {
     if (fs.existsSync(SERVER_CONFIG_FILE)) {
       cfg = JSON.parse(fs.readFileSync(SERVER_CONFIG_FILE, 'utf8'));
     }
-    const control = readNginxControl(PROJECT_ROOT);
-    res.json({
-      ...cfg,
-      nginx_controlled: control.controlled === true,
-      nginx_capabilities: control.capabilities || {},
-    });
+    res.json(cfg);
   } catch (e) {
     console.error('[Admin] Failed to read server config:', e.message);
     res.status(500).json({ error: '读取服务端口配置失败' });
@@ -3058,77 +2893,9 @@ router.get('/server-config', async (req, res) => {
 
 /**
  * @swagger
- * /admin/nginx-status:
- *   get:
- *     summary: Get Nginx process and control status
- *     tags: [Admin]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Nginx status
- */
-router.get('/nginx-status', async (req, res) => {
-  try {
-    const control = readNginxControl(PROJECT_ROOT);
-    const running = await isNginxRunning();
-    const processes = await getNginxProcessInfo();
-
-    const managedPaths = new Set();
-    const externalPaths = new Set();
-    processes.forEach((p) => {
-      const exePath = path.resolve(p.path || '');
-      const isManaged = exePath.startsWith(NGINX_DIR + path.sep) || exePath === NGINX_DIR;
-      if (isManaged) managedPaths.add(exePath);
-      else externalPaths.add(exePath);
-    });
-
-    const managedCount = managedPaths.size;
-    const externalCount = externalPaths.size;
-
-    let status = 'unused';
-    if (control.controlled) {
-      if (running && managedCount > 0) {
-        status = externalCount > 0 ? 'dual' : 'managed_running';
-      } else if (running && externalCount > 0) {
-        status = externalCount > 1 ? 'multiple' : 'external_running';
-      } else if (running) {
-        status = 'running_unknown';
-      } else {
-        status = 'error';
-      }
-    } else {
-      if (running && externalCount > 0) {
-        status = externalCount > 1 ? 'multiple' : 'external_running';
-      } else if (running) {
-        status = 'running_unknown';
-      } else {
-        status = 'unused';
-      }
-    }
-
-    res.json({
-      controlled: control.controlled === true,
-      running,
-      status,
-      managedCount,
-      externalCount,
-      processCount: processes.length,
-      binary: control.binary || null,
-      capabilities: control.capabilities || {},
-      timestamp: control.timestamp || null,
-    });
-  } catch (e) {
-    console.error('[Admin] Failed to read nginx status:', e.message);
-    res.status(500).json({ error: '读取 Nginx 状态失败' });
-  }
-});
-
-/**
- * @swagger
  * /admin/server-config:
  *   put:
- *     summary: Update Node.js and Nginx port configuration
+ *     summary: Update Node.js port configuration
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -3145,12 +2912,6 @@ router.get('/nginx-status', async (req, res) => {
  *                   api: { type: integer }
  *                   admin: { type: integer }
  *                   user: { type: integer }
- *               nginx:
- *                 type: object
- *                 properties:
- *                   user_listen: { type: integer }
- *                   admin_listen: { type: integer }
- *                   server_name: { type: string }
  *     responses:
  *       200:
  *         description: Config updated
@@ -3163,21 +2924,13 @@ router.put('/server-config', async (req, res) => {
     }
 
     const next = normalizeServerConfig(req.body, current);
-    let validationError = validateServerConfig(next);
-    if (!validationError) {
-      validationError = validateSecurityConfig(next);
-    }
+    const validationError = validateServerConfig(next);
     if (validationError) {
       return res.status(400).json({ error: validationError });
     }
 
     fs.writeFileSync(SERVER_CONFIG_FILE, JSON.stringify(next, null, 2), 'utf8');
 
-    // Regenerate nginx.conf with new ports
-    generateNginxConfig({ root: PROJECT_ROOT });
-
-    // Try to hot-reload nginx if it is running
-    const reloadResult = await reloadNginx();
     const restartRequired = configRequiresRestart(current, next);
 
     await audit.log({
@@ -3194,8 +2947,6 @@ router.put('/server-config', async (req, res) => {
     res.json({
       success: true,
       config: next,
-      nginx_reloaded: reloadResult.success,
-      nginx_reload_message: reloadResult.success ? undefined : reloadResult.message,
       restart_required: restartRequired,
     });
   } catch (e) {
@@ -4533,28 +4284,18 @@ async function probeApiEndpoint(url) {
  * @swagger
  * /admin/gateway-status:
  *   get:
- *     summary: Probe gateway URLs and Nginx listen ports
+ *     summary: Probe gateway URLs
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Gateway and Nginx status
+ *         description: Gateway status
  */
 router.get('/gateway-status', async (req, res) => {
   try {
     const settingsRow = await db.get("SELECT value FROM settings WHERE key = 'gateway_urls'");
     const gatewayUrls = parseGatewayUrls(settingsRow?.value);
-
-    let serverCfg = {};
-    try {
-      serverCfg = JSON.parse(fs.readFileSync(SERVER_CONFIG_FILE, 'utf8'));
-    } catch (err) {
-      // ignore missing server config
-    }
-    const nginxPorts = [];
-    if (serverCfg?.nginx?.user_listen) nginxPorts.push({ label: 'Nginx 用户入口', port: serverCfg.nginx.user_listen });
-    if (serverCfg?.nginx?.admin_listen) nginxPorts.push({ label: 'Nginx 管理入口', port: serverCfg.nginx.admin_listen });
 
     const urlResults = await Promise.all(gatewayUrls.map(async (u) => {
       if (u.active === false) {
@@ -4567,14 +4308,8 @@ router.get('/gateway-status', async (req, res) => {
       return { ...u, ...probe, apiStatus: apiProbe };
     }));
 
-    const portResults = await Promise.all(nginxPorts.map(async (p) => {
-      const listening = await isPortListening(p.port);
-      return { ...p, listening };
-    }));
-
     res.json({
       urls: urlResults,
-      nginxPorts: portResults,
       timestamp: new Date().toISOString(),
     });
   } catch (e) {

@@ -21,10 +21,8 @@ export default function Settings() {
   // Access ports for the admin/user portals are managed by /config/server.json.
   const buildDefaultGatewayUrls = (cfg) => {
     const ports = cfg?.ports || {};
-    const nginxListen = cfg?.nginx?.user_listen ?? 3003;
     return [
       { name: 'Node.js API', url: `http://localhost:${ports.api ?? 3000}`, type: 'node', active: true },
-      { name: 'Nginx API', url: `http://localhost:${nginxListen}`, type: 'nginx', active: false },
     ];
   };
 
@@ -72,29 +70,10 @@ export default function Settings() {
         parsedUrls = [];
       }
 
-      const legacyNames = ['Nginx 用户入口', 'Nginx 管理入口'];
-      const hasLegacy = parsedUrls.some(u => legacyNames.includes(u.name));
-      const hasStaleNginxApi = parsedUrls.some(u => u.type === 'nginx' && u.url === 'http://localhost:3005');
-      if (hasLegacy && Object.keys(loadedServerConfig).length > 0) {
-        const defaults = buildDefaultGatewayUrls(loadedServerConfig);
-        // Preserve active state of the user-facing nginx entry if it existed.
-        const legacyUser = parsedUrls.find(u => u.name === 'Nginx 用户入口');
-        if (legacyUser) {
-          const nginxApi = defaults.find(u => u.type === 'nginx');
-          if (nginxApi) nginxApi.active = !!legacyUser.active;
-        }
-        const migratedValue = JSON.stringify(defaults);
-        await api.put('/admin/settings', { key: 'gateway_urls', value: migratedValue });
-        loadedSettings.gateway_urls = migratedValue;
-      } else if (hasStaleNginxApi && Object.keys(loadedServerConfig).length > 0) {
-        // Replace stale hardcoded 3005 nginx API URL with the actual Nginx user portal port.
-        const nginxListen = loadedServerConfig.nginx?.user_listen ?? 3003;
-        const migrated = parsedUrls.map(u =>
-          u.type === 'nginx' && u.url === 'http://localhost:3005'
-            ? { ...u, url: `http://localhost:${nginxListen}` }
-            : u
-        );
-        const migratedValue = JSON.stringify(migrated);
+      // Drop legacy nginx entries and seed defaults if none exist.
+      const filteredUrls = parsedUrls.filter(u => u.type !== 'nginx');
+      if (filteredUrls.length !== parsedUrls.length) {
+        const migratedValue = JSON.stringify(filteredUrls);
         await api.put('/admin/settings', { key: 'gateway_urls', value: migratedValue });
         loadedSettings.gateway_urls = migratedValue;
       } else if (parsedUrls.length === 0 && Object.keys(loadedServerConfig).length > 0) {
@@ -173,19 +152,13 @@ export default function Settings() {
           api: Number(serverConfig.ports?.api),
           admin: Number(serverConfig.ports?.admin),
           user: Number(serverConfig.ports?.user),
-        },
-        nginx: {
-          user_listen: Number(serverConfig.nginx?.user_listen),
-          admin_listen: Number(serverConfig.nginx?.admin_listen),
-          server_name: String(serverConfig.nginx?.server_name || '').trim(),
         }
       };
       const res = await api.put('/admin/server-config', payload);
       setServerConfig(res.data.config);
       const parts = [];
-      if (res.data.nginx_reloaded) parts.push('Nginx 已热重载');
-      else parts.push('Nginx 重载失败：' + (res.data.nginx_reload_message || '未知错误'));
       if (res.data.restart_required) parts.push('Node.js 端口有变更，需重启后端服务后生效');
+      else parts.push('端口配置已保存');
       setServerConfigMessage(parts.join('；'));
     } catch (err) {
       showAlert(err.response?.data?.error || '保存端口配置失败');
@@ -258,7 +231,7 @@ export default function Settings() {
                 <div>
                   <div className="font-medium">网关地址</div>
                   <div className="text-sm text-muted-foreground">
-                    配置 Key 调用的 API 接口地址（Node.js 直连 / Nginx 反向代理）
+                    配置 Key 调用的 API 接口地址（Node.js 直连）
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -272,13 +245,13 @@ export default function Settings() {
                 </div>
               </div>
 
-              {['node', 'nginx'].map(type => (
+              {['node'].map(type => (
                 <div key={type} className="mb-3">
                   <div className="text-xs font-medium text-muted-foreground mb-2">
-                    {type === 'node' ? 'Node.js API 接口' : 'Nginx API 接口'}
+                    Node.js API 接口
                   </div>
                   <div className="space-y-2">
-                    {gatewayUrls.filter(u => u.type === type || (!u.type && type === 'node')).map((item, index) => {
+                    {gatewayUrls.filter(u => u.type === type || !u.type).map((item, index) => {
                       const realIndex = gatewayUrls.indexOf(item);
                       const status = getUrlStatus(item.url);
                       return (
@@ -331,7 +304,6 @@ export default function Settings() {
                     className="h-8 rounded border bg-background px-2 text-xs"
                   >
                     <option value="node">Node</option>
-                    <option value="nginx">Nginx</option>
                   </select>
                   <Input
                     value={newUrlName}
@@ -358,18 +330,6 @@ export default function Settings() {
                 <div className="text-xs text-green-600 mt-2">已复制到剪贴板</div>
               )}
 
-              {gatewayStatus?.nginxPorts && gatewayStatus.nginxPorts.length > 0 && (
-                <div className="mt-4 pt-3 border-t">
-                  <div className="text-xs font-medium text-muted-foreground mb-2">Nginx 端口监听状态</div>
-                  <div className="flex flex-wrap gap-2">
-                    {gatewayStatus.nginxPorts.map((p) => (
-                      <Badge key={p.label} variant={p.listening ? 'success' : 'destructive'} className="text-xs">
-                        {p.label}:{p.port} {p.listening ? '监听中' : '未监听'}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -546,36 +506,6 @@ export default function Settings() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs text-muted-foreground">Nginx User 端口</label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="65535"
-                    value={serverConfig.nginx?.user_listen ?? ''}
-                    onChange={(e) => updateServerConfigPath('nginx.user_listen', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-muted-foreground">Nginx Admin 端口</label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="65535"
-                    value={serverConfig.nginx?.admin_listen ?? ''}
-                    onChange={(e) => updateServerConfigPath('nginx.admin_listen', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-muted-foreground">Nginx server_name</label>
-                  <Input
-                    value={serverConfig.nginx?.server_name ?? ''}
-                    onChange={(e) => updateServerConfigPath('nginx.server_name', e.target.value)}
-                  />
-                </div>
-              </div>
-
               <div className="flex items-center gap-3">
                 <Button onClick={saveServerConfig} disabled={serverConfigSaving}>
                   {serverConfigSaving ? '保存中...' : '保存端口配置'}
@@ -588,7 +518,7 @@ export default function Settings() {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Nginx 端口变更后会立即热重载；Node.js 端口变更需要重启后端服务才能生效。
+                Node.js 端口变更需要重启后端服务才能生效。
               </p>
             </>
           )}

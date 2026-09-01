@@ -32,7 +32,6 @@ describe('Gateway Status API', () => {
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.urls)).toBe(true);
-    expect(Array.isArray(res.body.nginxPorts)).toBe(true);
     expect(res.body).toHaveProperty('timestamp');
   });
 });

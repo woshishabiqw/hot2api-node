@@ -1,6 +1,6 @@
 /**
  * Global IP-based rate limit middleware for the Node.js API layer.
- * Acts as a defense-in-depth fallback when Nginx limit_req is unavailable.
+ * Acts as a defense-in-depth IP rate limiter at the Node.js layer.
  * Configuration is read from the settings table key 'node_security'.
  */
 const { getRedis } = require('../config/redis');

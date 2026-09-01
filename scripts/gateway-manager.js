@@ -12,16 +12,13 @@ const BACKUP_DIR = path.join(PROJECT_ROOT, 'backups');
 const SERVER_CONFIG = path.join(PROJECT_ROOT, 'config', 'server.json');
 
 let BACKEND_PORTS = [];
-let NGINX_PORTS = [];
 
 try {
   const cfg = JSON.parse(fs.readFileSync(SERVER_CONFIG, 'utf8'));
   BACKEND_PORTS = [cfg.ports.api, cfg.ports.admin, cfg.ports.user];
-  NGINX_PORTS = [cfg.nginx.user_listen, cfg.nginx.admin_listen];
 } catch (e) {
   console.error('读取 config/server.json 失败，使用默认端口', e.message);
   BACKEND_PORTS = [3000, 3001, 3002];
-  NGINX_PORTS = [3003, 3004];
 }
 
 function sleep(ms) {
@@ -89,12 +86,6 @@ function isProjectNode(pid) {
   return info.includes('node') && info.includes('src/index.js') && info.includes(PROJECT_ROOT);
 }
 
-function isNginx(pid) {
-  const info = getProcInfo(pid);
-  if (process.platform === 'win32') return info.includes('nginx.exe');
-  return /(^|\/)nginx(\s|$)/.test(info);
-}
-
 function killPid(pid) {
   try {
     if (process.platform === 'win32') {
@@ -122,12 +113,9 @@ function getPm2List() {
 function getServiceStatus() {
   const list = getPm2List();
   const backend = list.find(p => p.name === 'gateway-backend');
-  const nginx = list.find(p => p.name === 'nginx');
   return {
     backend: backend ? backend.pm2_env.status : '未注册',
-    nginx: nginx ? nginx.pm2_env.status : '未注册',
     backendPid: backend ? backend.pid : null,
-    nginxPid: nginx ? nginx.pid : null,
   };
 }
 
@@ -136,9 +124,8 @@ function printStatus() {
   const svc = getServiceStatus();
   console.log('\n=== 服务状态 ===');
   console.log(`gateway-backend PM2: ${svc.backend}  PID: ${svc.backendPid || '-'}`);
-  console.log(`nginx           PM2: ${svc.nginx}  PID: ${svc.nginxPid || '-'}`);
   console.log('\n端口监听:');
-  [...BACKEND_PORTS, ...NGINX_PORTS].forEach(port => {
+  BACKEND_PORTS.forEach(port => {
     const pid = ports[port];
     console.log(`  :${port}  ${pid ? `PID ${pid}` : '未监听'}`);
   });
@@ -151,7 +138,6 @@ async function autoDetectStart() {
 
   console.log('\n开始自动检测...');
   console.log(`gateway-backend: ${svc.backend}`);
-  console.log(`nginx          : ${svc.nginx}`);
 
   // 后端孤儿进程清理
   if (svc.backend !== 'online') {
@@ -169,45 +155,13 @@ async function autoDetectStart() {
     }
   }
 
-  // Nginx 孤儿进程清理
-  if (svc.nginx !== 'online') {
-    for (const port of NGINX_PORTS) {
-      const pid = ports[port];
-      if (!pid) continue;
-      if (isNginx(pid)) {
-        console.log(`端口 ${port} 被遗留 Nginx 进程 (PID ${pid}) 占用，正在清理...`);
-        killPid(pid);
-        await sleep(500);
-      } else {
-        console.log(`❌ 端口 ${port} 被外部进程 (PID ${pid}) 占用，无法自动启动 Nginx`);
-        return;
-      }
-    }
-  }
-
   // 启动缺失的服务
-  if (svc.backend === '未注册' && svc.nginx === '未注册') {
+  if (svc.backend === '未注册') {
     console.log('启动全部服务...');
     sh('pm2 start ecosystem.config.js', { stdio: 'inherit' });
-  } else {
-    if (svc.backend !== 'online') {
-      if (svc.backend === '未注册') {
-        console.log('注册并启动 gateway-backend...');
-        sh('pm2 start ecosystem.config.js --only gateway-backend', { stdio: 'inherit' });
-      } else {
-        console.log('重启 gateway-backend...');
-        sh('pm2 restart gateway-backend', { stdio: 'inherit' });
-      }
-    }
-    if (svc.nginx !== 'online') {
-      if (svc.nginx === '未注册') {
-        console.log('注册并启动 nginx...');
-        sh('pm2 start ecosystem.config.js --only nginx', { stdio: 'inherit' });
-      } else {
-        console.log('重启 nginx...');
-        sh('pm2 restart nginx', { stdio: 'inherit' });
-      }
-    }
+  } else if (svc.backend !== 'online') {
+    console.log('重启 gateway-backend...');
+    sh('pm2 restart gateway-backend', { stdio: 'inherit' });
   }
 
   await sleep(1500);
@@ -231,7 +185,7 @@ async function viewLogs() {
   const choice = await new Select({
     name: 'service',
     message: '选择要查看日志的服务',
-    choices: ['gateway-backend', 'nginx', '返回'],
+    choices: ['gateway-backend', '返回'],
   }).run();
 
   if (choice === '返回') return;
@@ -245,7 +199,7 @@ async function viewLogs() {
 
 function httpRequest(method, urlPath, bodyObj, headers = {}) {
   return new Promise((resolve, reject) => {
-    const url = new URL(urlPath, `http://localhost:${NGINX_PORTS[1]}`);
+    const url = new URL(urlPath, `http://localhost:${BACKEND_PORTS[1]}`);
     const postData = bodyObj ? JSON.stringify(bodyObj) : null;
     const options = {
       hostname: url.hostname,
@@ -279,10 +233,6 @@ async function healthCheck() {
     if (ports[port]) console.log(`✅ 后端端口 ${port} 已监听`);
     else { console.log(`❌ 后端端口 ${port} 未监听`); ok = false; }
   }
-  for (const port of NGINX_PORTS) {
-    if (ports[port]) console.log(`✅ Nginx 端口 ${port} 已监听`);
-    else { console.log(`❌ Nginx 端口 ${port} 未监听`); ok = false; }
-  }
 
   // 登录检测
   let token = null;
@@ -311,7 +261,7 @@ async function healthCheck() {
   if (token) {
     try {
       await new Promise((resolve, reject) => {
-        const url = new URL('/api/admin/sources/probe/stream', `http://localhost:${NGINX_PORTS[1]}`);
+        const url = new URL('/api/admin/sources/probe/stream', `http://localhost:${BACKEND_PORTS[1]}`);
         url.searchParams.set('token', token);
         const req = http.get(url, { timeout: 8000 }, res => {
           if (res.statusCode !== 200) {
@@ -333,9 +283,9 @@ async function healthCheck() {
         req.on('error', reject);
         req.on('timeout', () => { req.destroy(); reject(new Error('SSE 连接超时')); });
       });
-      console.log('✅ Nginx SSE 实时流正常');
+      console.log('✅ SSE 实时流正常');
     } catch (e) {
-      console.log('❌ Nginx SSE 实时流异常:', e.message);
+      console.log('❌ SSE 实时流异常:', e.message);
       ok = false;
     }
   }
@@ -428,11 +378,11 @@ async function runTests() {
   const confirm = await new Select({
     name: 'confirm',
     message: '确定要运行吗？',
-    choices: ['取消', '只跑 nginx-config + probe', '运行全部测试'],
+    choices: ['取消', '运行全部测试'],
   }).run();
 
   if (confirm === '取消') return;
-  const pattern = confirm === '只跑 nginx-config + probe' ? 'nginx-config|probe' : '';
+  const pattern = '';
   try {
     const cmd = pattern
       ? `npx jest --runInBand --forceExit --testPathPatterns='${pattern}'`

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Badge } from '../components/Badge';
-import { Plus, Trash2, Edit2, Check, X, Shield, Server, Cpu } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Shield, Cpu } from 'lucide-react';
 import { showAlert, showConfirm } from '../components/Dialog';
 
 export default function SecuritySettings() {
@@ -14,20 +14,6 @@ export default function SecuritySettings() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ip: '', reason: '', enabled: true, expires_at: '' });
 
-  const [nginxControlled, setNginxControlled] = useState(false);
-  const [nginxCapabilities, setNginxCapabilities] = useState({});
-  const [serverConfig, setServerConfig] = useState(null);
-  const [nginxSecurity, setNginxSecurity] = useState({
-    server_tokens: false,
-    security_headers: false,
-    admin_ip_allowlist: [],
-    rate_limit: { enabled: false, rps: 10, burst: 20 },
-    timeouts: { client_body: 60, client_header: 60, send: 60 },
-  });
-  const [nginxSaving, setNginxSaving] = useState(false);
-  const [nginxStatus, setNginxStatus] = useState(null);
-  const [nginxStatusLoading, setNginxStatusLoading] = useState(false);
-
   const [nodeSecurity, setNodeSecurity] = useState({
     ipRateLimit: { enabled: false, windowSeconds: 60, maxRequests: 100 },
     bodyLimitMb: 10,
@@ -36,14 +22,7 @@ export default function SecuritySettings() {
   });
   const [nodeSaving, setNodeSaving] = useState(false);
 
-  useEffect(() => { loadData(); loadServerConfig(); loadNginxStatus(); loadNodeSecurity(); }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      loadNginxStatus();
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
+  useEffect(() => { loadData(); loadNodeSecurity(); }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -54,18 +33,6 @@ export default function SecuritySettings() {
       showAlert(err.response?.data?.error || '加载失败');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadNginxStatus = async () => {
-    setNginxStatusLoading(true);
-    try {
-      const res = await api.get('/admin/nginx-status');
-      setNginxStatus(res.data);
-    } catch (err) {
-      // Ignore polling errors so the UI doesn't flash alerts.
-    } finally {
-      setNginxStatusLoading(false);
     }
   };
 
@@ -85,34 +52,6 @@ export default function SecuritySettings() {
       });
     } catch (err) {
       // Node security config may be unavailable; ignore.
-    }
-  };
-
-  const loadServerConfig = async () => {
-    try {
-      const res = await api.get('/admin/server-config');
-      const cfg = res.data;
-      setServerConfig(cfg);
-      setNginxControlled(cfg.nginx_controlled === true);
-      setNginxCapabilities(cfg.nginx_capabilities || {});
-      const sec = cfg.nginx?.security || {};
-      setNginxSecurity({
-        server_tokens: sec.server_tokens === true,
-        security_headers: sec.security_headers === true,
-        admin_ip_allowlist: Array.isArray(sec.admin_ip_allowlist) ? sec.admin_ip_allowlist : [],
-        rate_limit: {
-          enabled: sec.rate_limit?.enabled === true,
-          rps: sec.rate_limit?.rps ?? 10,
-          burst: sec.rate_limit?.burst ?? 20,
-        },
-        timeouts: {
-          client_body: sec.timeouts?.client_body ?? 60,
-          client_header: sec.timeouts?.client_header ?? 60,
-          send: sec.timeouts?.send ?? 60,
-        },
-      });
-    } catch (err) {
-      // Server config may be unavailable in some test setups; ignore.
     }
   };
 
@@ -194,50 +133,6 @@ export default function SecuritySettings() {
     setNodeSecurity(s => ({
       ...s,
       ipRateLimit: { ...s.ipRateLimit, [field]: value },
-    }));
-  };
-
-  const handleNginxSave = async () => {
-    if (!serverConfig) return;
-    setNginxSaving(true);
-    try {
-      // Strip UI-only fields returned by GET /admin/server-config
-      const { nginx_controlled, nginx_capabilities, ...cleanConfig } = serverConfig;
-      const payload = {
-        ...cleanConfig,
-        nginx: {
-          ...(cleanConfig.nginx || {}),
-          security: nginxSecurity,
-        },
-      };
-      // The backend only accepts security fields when nginx_controlled is true.
-      const res = await api.put('/admin/server-config', payload);
-      showAlert(res.data?.nginx_reloaded
-        ? 'Nginx 安全配置已保存并生效'
-        : `Nginx 安全配置已保存（${res.data?.nginx_reload_message || '未重载'}）`);
-      await loadServerConfig();
-    } catch (err) {
-      showAlert(err.response?.data?.error || '保存失败');
-    } finally {
-      setNginxSaving(false);
-    }
-  };
-
-  const toggleBool = (key) => {
-    setNginxSecurity(s => ({ ...s, [key]: !s[key] }));
-  };
-
-  const updateRateLimit = (field, value) => {
-    setNginxSecurity(s => ({
-      ...s,
-      rate_limit: { ...s.rate_limit, [field]: value },
-    }));
-  };
-
-  const updateTimeout = (field, value) => {
-    setNginxSecurity(s => ({
-      ...s,
-      timeouts: { ...s.timeouts, [field]: value },
     }));
   };
 
@@ -347,136 +242,6 @@ export default function SecuritySettings() {
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Server className="w-5 h-5 text-primary" />
-              Nginx 层安全
-            </div>
-            {nginxStatus && (
-              <Badge variant={nginxStatus.controlled ? (nginxStatus.running ? 'default' : 'destructive') : 'outline'}>
-                {nginxStatusLoading ? '检测中…' : nginxStatus.controlled ? (nginxStatus.running ? '运行中' : '未运行') : '未控制'}
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!nginxControlled ? (
-            <div className="text-sm text-muted-foreground">
-              当前未使用项目自带的 Nginx，Nginx 层安全选项已禁用。Node.js 后端的安全策略仍然生效。
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <input
-                  id="server_tokens"
-                  type="checkbox"
-                  checked={nginxSecurity.server_tokens}
-                  onChange={() => toggleBool('server_tokens')}
-                />
-                <label htmlFor="server_tokens" className="text-sm">隐藏 Nginx 版本号（server_tokens off）</label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  id="security_headers"
-                  type="checkbox"
-                  checked={nginxSecurity.security_headers}
-                  onChange={() => toggleBool('security_headers')}
-                />
-                <label htmlFor="security_headers" className="text-sm">启用 Nginx 安全响应头（Permissions-Policy）</label>
-              </div>
-
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">管理后台 IP 白名单（每行一个 CIDR，留空表示不限制）</label>
-                <textarea
-                  className="w-full min-h-[80px] rounded-md border bg-background px-3 py-2 text-sm"
-                  placeholder="例如：&#10;127.0.0.1/32&#10;10.0.0.0/24"
-                  value={nginxSecurity.admin_ip_allowlist.join('\n')}
-                  onChange={e => setNginxSecurity(s => ({ ...s, admin_ip_allowlist: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) }))}
-                />
-              </div>
-
-              {nginxCapabilities.limit_req && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="rate_limit_enabled"
-                      type="checkbox"
-                      checked={nginxSecurity.rate_limit.enabled}
-                      onChange={e => updateRateLimit('enabled', e.target.checked)}
-                    />
-                    <label htmlFor="rate_limit_enabled" className="text-sm">启用 API 速率限制（limit_req）</label>
-                  </div>
-                  {nginxSecurity.rate_limit.enabled && (
-                    <div className="grid grid-cols-2 gap-3 pl-6">
-                      <div>
-                        <label className="text-xs text-muted-foreground block mb-1">每秒请求数（rps）</label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={10000}
-                          value={nginxSecurity.rate_limit.rps}
-                          onChange={e => updateRateLimit('rps', parseInt(e.target.value) || 10)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground block mb-1">突发容量（burst）</label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={100000}
-                          value={nginxSecurity.rate_limit.burst}
-                          onChange={e => updateRateLimit('burst', parseInt(e.target.value) || 20)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">client_body_timeout（秒）</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={3600}
-                    value={nginxSecurity.timeouts.client_body}
-                    onChange={e => updateTimeout('client_body', parseInt(e.target.value) || 0)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">client_header_timeout（秒）</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={3600}
-                    value={nginxSecurity.timeouts.client_header}
-                    onChange={e => updateTimeout('client_header', parseInt(e.target.value) || 0)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">send_timeout（秒）</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={3600}
-                    value={nginxSecurity.timeouts.send}
-                    onChange={e => updateTimeout('send', parseInt(e.target.value) || 0)}
-                  />
-                </div>
-              </div>
-
-              <Button onClick={handleNginxSave} disabled={nginxSaving}>
-                {nginxSaving ? '保存中…' : '保存 Nginx 安全配置'}
-              </Button>
             </div>
           )}
         </CardContent>

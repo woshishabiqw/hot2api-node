@@ -43,7 +43,6 @@ logs/
 */logs/
 backend/logs/
 frontend-admin-ssr/logs/
-nginx/logs/
 backend/*.log
 frontend-admin/*.log
 frontend-user/*.log

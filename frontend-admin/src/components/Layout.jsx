@@ -22,14 +22,11 @@ import {
   Database,
   ClipboardList,
   Wallet,
-  HardDrive,
-  RefreshCw
+  HardDrive
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '../lib/utils';
 import Banner from './Banner';
-import api from '../lib/api';
-import { Badge } from './Badge';
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -37,7 +34,6 @@ export default function Layout({ children }) {
   const { theme, setTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [routingMode, setRoutingMode] = useState('auto');
-  const [nginxStatus, setNginxStatus] = useState(null);
   const navItems = [
     { href: '/', label: '仪表盘', icon: LayoutDashboard },
     {
@@ -151,15 +147,6 @@ export default function Layout({ children }) {
     }
   }, [location.pathname]);
 
-  const loadNginxStatus = async () => {
-    try {
-      const res = await api.get('/admin/nginx-status');
-      setNginxStatus(res.data);
-    } catch (err) {
-      // Ignore manual refresh errors.
-    }
-  };
-
   const toggleMenu = (label) => {
     setExpandedMenus(prev => ({ ...prev, [label]: !prev[label] }));
   };
@@ -253,43 +240,6 @@ export default function Layout({ children }) {
           </nav>
 
           <div className="p-4 border-t">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Nginx</span>
-                <button
-                  onClick={loadNginxStatus}
-                  title="刷新 Nginx 状态"
-                  className="p-1 rounded-md hover:bg-accent text-muted-foreground"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                </button>
-              </div>
-              {nginxStatus && (
-                <Badge
-                  variant={{
-                    managed_running: 'success',
-                    external_running: 'warning',
-                    dual: 'warning',
-                    multiple: 'destructive',
-                    error: 'destructive',
-                    unused: 'outline',
-                    running_unknown: 'secondary',
-                  }[nginxStatus.status] || 'outline'}
-                  className="text-xs"
-                  title={nginxStatus.status === 'dual' || nginxStatus.status === 'multiple' ? '检测到多个 Nginx 实例，建议只保留一个接管实例' : undefined}
-                >
-                  {{
-                    managed_running: '运行中（接管）',
-                    external_running: '运行中（外部接管）',
-                    dual: '双接管',
-                    multiple: '多 Nginx',
-                    error: '异常',
-                    unused: '未使用',
-                    running_unknown: '运行中',
-                  }[nginxStatus.status] || nginxStatus.status}
-                </Badge>
-              )}
-            </div>
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-muted-foreground">
                 {user?.username}

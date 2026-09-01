@@ -239,8 +239,6 @@ describe('P1 Regression Tests', () => {
       expect(res.body.payment_url || res.body.paymentUrl).toBeDefined();
       const url = res.body.payment_url || res.body.paymentUrl;
       // The URL returned by the backend is mounted at /billing internally.
-      // In production nginx exposes it under /api/billing, so the frontend
-      // must prepend /api to relative payment URLs.
       expect(url).toMatch(/^\/billing\/pay-mock/);
     });
   });

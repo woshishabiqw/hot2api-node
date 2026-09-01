@@ -922,7 +922,7 @@ router.get('/orders/pending-stream', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering for SSE
+  res.setHeader('X-Accel-Buffering', 'no'); // disable reverse proxy buffering for SSE
   res.flushHeaders();
 
   const userId = req.user.id;

@@ -64,22 +64,9 @@ cd frontend-user && npm run dev    # 端口 3002
 
 ### 信任代理（Trust Proxy）
 
-网关部署在 Nginx 等反向代理后方时，需要正确识别客户端真实 IP，否则登录锁定、IP 黑名单、限速等安全功能会失效。
-
 - 在 `config/server.json` 中设置 `trust_proxy`（布尔值），默认为 `true`。启动时后端会调用 `app.set('trust proxy', ...)`。
-- 如果直接暴露后端端口（无反向代理），建议设为 `false`，避免客户端伪造 `X-Forwarded-For`。
+- 如果直接暴露后端端口，建议设为 `false`，避免客户端伪造 `X-Forwarded-For`。
 - 该配置可通过管理后台「系统设置 → 安全管理」在线修改，修改后需要重启 Node.js 后端生效。
-
-### Nginx 层安全
-
-项目自带 Nginx（`nginx/nginx.exe`）时，启动脚本会生成 `nginx/nginx.conf` 并在 `nginx/.nginx-control.json` 中标记 `controlled: true`。只有在 **可控 Nginx** 状态下，管理后台才会显示以下 Nginx 层安全选项：
-
-- 隐藏 Nginx 版本号（`server_tokens off`）
-- 追加 Nginx 安全响应头
-- Admin 后台 IP 白名单
-- API 速率限制（`limit_req`，需要 Nginx 编译包含 `--with-http_limit_req_module`）
-
-如果项目检测到外部/不可控 Nginx（`controlled: false`），生成脚本不会向 `nginx/nginx.conf` 写入任何安全指令，避免污染外部配置。Nginx 层安全设置同样通过「系统设置 → 安全管理」页面维护，保存后系统自动重载 Nginx。
 
 ## 使用流程
 
