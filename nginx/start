@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Wrapper for start.js. Works in Git Bash / WSL / Linux.
+# Usage: cd nginx && ./start [--stop|--reload|--test]
+cd "$(dirname "$0")" || exit 1
+node start.js "$@"

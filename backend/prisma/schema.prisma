@@ -1,0 +1,598 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Source {
+  id                     Int       @id @default(autoincrement())
+  name                   String    @db.VarChar(255)
+  base_url               String
+  protocol               String    @default("openai") @db.VarChar(50)
+  api_key                String    @default("")
+  weight                 Int       @default(1)
+  is_active              Boolean   @default(true)
+  max_concurrent         Int       @default(1000000)
+  current_concurrent     Int       @default(0)
+  total_requests         BigInt    @default(0)
+  total_tokens           BigInt    @default(0)
+  last_check_at          DateTime? @db.Timestamp(6)
+  status                 String    @default("unknown") @db.VarChar(50)
+  quota_limit            Decimal   @default(1000000) @db.Decimal(20, 8)
+  quota_used             Decimal   @default(0) @db.Decimal(20, 8)
+  strip_tools            Boolean   @default(false)
+  created_at             DateTime  @default(now()) @db.Timestamp(6)
+  source_group           String?
+  stack_mode             String?   @db.VarChar(50)
+  api_keys               String?
+  api_urls               String?
+  last_probe_at          DateTime? @db.Timestamp(6)
+  direct_status          String?   @default("enabled")
+  direct_disabled_until  DateTime? @db.Timestamp(6)
+  direct_latency_ms      Int?
+  direct_last_check      DateTime? @db.Timestamp(6)
+  direct_fail_count      Int?      @default(0)
+  direct_success_count   Int?      @default(0)
+  direct_flap_count      Int?      @default(0)
+  relay_source_id        Int?
+  balance_group          String?
+  last_check_status_code Int?
+  last_check_detail      String?
+
+  @@map("sources")
+}
+
+model Model {
+  id                Int     @id @default(autoincrement())
+  source_id         Int
+  model_id          String  @db.VarChar(255)
+  source_model_id   String? @db.VarChar(255)
+  model_alias       String? @db.VarChar(255)
+  input_price       Float   @default(0.025)
+  input_price_cache Float   @default(0.02)
+  output_price      Float   @default(2.0)
+  max_tokens        Int     @default(4096)
+  is_vision         Boolean @default(false)
+  is_active         Boolean @default(true)
+  priority          Int     @default(0)
+  description       String?
+  supports_tools    Boolean @default(true)
+  supports_json     Boolean @default(true)
+  supports_fim      Boolean @default(false)
+  max_concurrent    Int     @default(100)
+  model_group       String  @default("default")
+  completion_price  Float   @default(1.0)
+  rate_multiplier   Float   @default(1.0)
+  instance_id       Int?
+
+  @@map("models")
+}
+
+model Instance {
+  id                Int              @id @default(autoincrement())
+  name              String           @db.VarChar(255)
+  inbound_model_id  String           @db.VarChar(255)
+  inbound_source_id Int
+  outbound_model_id String           @unique(map: "instances_outbound_model_id_unique") @db.VarChar(255)
+  stack_mode        String           @default("merged") @db.VarChar(50)
+  is_active         Boolean          @default(true)
+  created_at        DateTime         @default(now()) @db.Timestamp(6)
+  members           InstanceMember[]
+
+  @@map("instances")
+}
+
+model InstanceMember {
+  id          Int      @id @default(autoincrement())
+  instance_id Int
+  source_id   Int
+  weight      Int      @default(1)
+  is_active   Boolean  @default(true)
+  instance    Instance @relation(fields: [instance_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([instance_id, source_id], map: "instance_members_instance_source_unique")
+  @@map("instance_members")
+}
+
+model ModelGroup {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique @db.VarChar(255)
+  description     String?
+  rate_multiplier Float    @default(1.0)
+  is_system       Boolean  @default(false)
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamp(6)
+
+  @@map("model_groups")
+}
+
+model ModelConcurrentTracker {
+  user_id            Int
+  model_id           String @db.VarChar(255)
+  current_concurrent Int    @default(0)
+
+  @@id([user_id, model_id])
+  @@map("model_concurrent_tracker")
+}
+
+model User {
+  id                   Int             @id @default(autoincrement())
+  username             String          @unique @db.VarChar(255)
+  password_hash        String
+  role                 String          @default("user") @db.VarChar(50)
+  quota_limit          Decimal         @default(0) @db.Decimal(20, 8)
+  quota_used           Decimal         @default(0) @db.Decimal(20, 8)
+  is_active            Boolean         @default(true)
+  created_at           DateTime        @default(now()) @db.Timestamp(6)
+  currency             String          @default("CNY") @db.VarChar(10)
+  quota_type           String          @default("currency") @db.VarChar(20)
+  second_password_hash String?
+  balance              Decimal?        @default(0) @db.Decimal(18, 4)
+  total_tokens         BigInt?         @default(0)
+  total_requests       BigInt?         @default(0)
+  total_cost           Decimal?        @default(0) @db.Decimal(18, 4)
+  log_retention_limit  Int?            @default(100000)
+  tpm                  Int?            @default(0)
+  rpm                  Int?            @default(0)
+  tpd                  Int?            @default(0)
+  max_concurrent       Int?            @default(0)
+  token_revoked_before Int?
+  email                String?         @unique @db.VarChar(255)
+  login_attempts       login_attempts?
+
+  @@map("users")
+}
+
+model UserKey {
+  id                 Int       @id @default(autoincrement())
+  user_id            Int
+  key_hash           String
+  key_prefix         String    @db.VarChar(50)
+  name               String?   @db.VarChar(255)
+  is_active          Boolean   @default(true)
+  max_concurrent     Int       @default(500)
+  current_concurrent Int       @default(0)
+  total_requests     BigInt    @default(0)
+  total_tokens       BigInt    @default(0)
+  rate_limit         Int       @default(60)
+  last_used_at       DateTime? @db.Timestamp(6)
+  created_at         DateTime  @default(now()) @db.Timestamp(6)
+  model_limit        String    @default("all")
+  group_limit        String    @default("all")
+  expires_at         DateTime? @db.Timestamp(6)
+  quota_limit        Decimal   @default(0) @db.Decimal(20, 8)
+  quota_used         Decimal   @default(0) @db.Decimal(20, 8)
+  currency           String    @default("CNY") @db.VarChar(10)
+  quota_type         String    @default("tokens") @db.VarChar(20)
+  encrypted_key      String?
+  workspace_id       Int?
+
+  @@map("user_keys")
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model RequestLog {
+  id                    Int      @id @default(autoincrement())
+  user_id               Int?
+  user_key_id           Int?
+  source_id             Int?
+  model                 String?  @db.VarChar(255)
+  protocol              String?  @db.VarChar(50)
+  input_tokens          Int      @default(0)
+  output_tokens         Int      @default(0)
+  total_tokens          BigInt   @default(0)
+  cached_tokens         Int      @default(0)
+  cache_creation_tokens Int      @default(0)
+  uncached_tokens       Int      @default(0)
+  status_code           Int?
+  latency_ms            Int?
+  error_message         String?
+  created_at            DateTime @default(now()) @db.Timestamp(6)
+  cost                  Float    @default(0)
+  has_thinking          Boolean  @default(false)
+  instance_id           Int?
+  workspace_id          Int?
+  client_type           String?  @default("apikey") @db.VarChar(20)
+  cost_local            Decimal? @default(0) @db.Decimal(18, 8)
+  request_uuid          String?
+
+  @@index([created_at(sort: Desc)], map: "idx_request_logs_created_at")
+  @@index([model], map: "idx_request_logs_model")
+  @@index([model, created_at], map: "idx_request_logs_model_created_at")
+  @@index([request_uuid], map: "idx_request_logs_request_uuid")
+  @@index([source_id], map: "idx_request_logs_source_id")
+  @@index([source_id, created_at], map: "idx_request_logs_source_id_created_at")
+  @@index([user_id], map: "idx_request_logs_user_id")
+  @@index([user_id, created_at], map: "idx_request_logs_user_id_created_at")
+  @@index([user_id, created_at, total_tokens, cost], map: "idx_request_logs_user_id_created_at_covering")
+  @@map("request_logs")
+}
+
+model UserDailyModelStat {
+  id               Int       @id @default(autoincrement())
+  user_id          Int
+  date             String    @db.VarChar(10)
+  model            String
+  requests         BigInt    @default(0)
+  tokens           BigInt    @default(0)
+  cost             Float     @default(0)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+  latency_ms_sum   BigInt    @default(0)
+  latency_ms_count BigInt    @default(0)
+
+  @@unique([user_id, date, model])
+  @@index([user_id, date], map: "idx_user_daily_model_stats_user_date")
+  @@index([user_id, model], map: "idx_user_daily_model_stats_user_model")
+  @@map("user_daily_model_stats")
+}
+
+model UserHourlyModelStat {
+  id               Int       @id @default(autoincrement())
+  user_id          Int
+  hour             String    @db.VarChar(16)
+  model            String
+  requests         BigInt    @default(0)
+  tokens           BigInt    @default(0)
+  cost             Float     @default(0)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+  latency_ms_sum   BigInt    @default(0)
+  latency_ms_count BigInt    @default(0)
+
+  @@unique([user_id, hour, model])
+  @@index([user_id, hour], map: "idx_user_hourly_model_stats_user_hour")
+  @@index([user_id, model], map: "idx_user_hourly_model_stats_user_model")
+  @@map("user_hourly_model_stats")
+}
+
+model DispatchRule {
+  id            Int     @id @default(autoincrement())
+  name          String  @db.VarChar(255)
+  strategy      String  @default("round_robin") @db.VarChar(50)
+  model_filter  String?
+  source_filter String?
+  priority      Int     @default(0)
+  is_active     Boolean @default(true)
+
+  @@map("dispatch_rules")
+}
+
+model Setting {
+  key   String  @id @db.VarChar(255)
+  value String?
+
+  @@map("settings")
+}
+
+model RateLimitTracker {
+  key_id        Int
+  window_start  Int
+  request_count Int @default(0)
+
+  @@id([key_id, window_start])
+  @@map("rate_limit_tracker")
+}
+
+model AuditLog {
+  id            Int       @id @default(autoincrement())
+  user_id       Int?
+  username      String?
+  action        String
+  resource_type String
+  resource_id   Int?
+  resource_name String?
+  old_value     String?
+  new_value     String?
+  ip_address    String?
+  user_agent    String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([action], map: "idx_audit_logs_action")
+  @@index([created_at(sort: Desc)], map: "idx_audit_logs_created_at")
+  @@index([resource_type], map: "idx_audit_logs_resource_type")
+  @@map("audit_logs")
+}
+
+model Workspace {
+  id                Int       @id @default(autoincrement())
+  name              String
+  slug              String    @unique
+  owner_id          Int
+  plan_id           Int?
+  balance           Decimal?  @default(0) @db.Decimal(18, 4)
+  quota_limit       Decimal?  @default(0) @db.Decimal(20, 8)
+  quota_used        Decimal?  @default(0) @db.Decimal(20, 8)
+  status            String?   @default("active")
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  token_quota_limit BigInt?   @default(0)
+  token_quota_used  Decimal?  @default(0) @db.Decimal(20, 8)
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspace_id Int
+  user_id      Int
+  role         String?   @default("member")
+  joined_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  @@id([workspace_id, user_id])
+  @@map("workspace_members")
+}
+
+model WorkspaceInvite {
+  id           Int       @id @default(autoincrement())
+  workspace_id Int
+  inviter_id   Int
+  invitee_id   Int
+  role         String?   @default("member")
+  status       String?   @default("pending")
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([workspace_id, invitee_id])
+  @@map("workspace_invites")
+}
+
+model BillingPlan {
+  id            Int       @id @default(autoincrement())
+  name          String
+  description   String?
+  price_monthly Float?    @default(0) @db.Real
+  price_yearly  Float?    @default(0) @db.Real
+  quota_limit   Decimal?  @default(0) @db.Decimal(20, 8)
+  features      String?
+  is_active     Boolean?  @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  @@map("billing_plans")
+}
+
+model BillingRecord {
+  id                 Int       @id @default(autoincrement())
+  workspace_id       Int?
+  type               String
+  amount             Float     @db.Real
+  balance_after      Float     @default(0) @db.Real
+  description        String?
+  metadata           String?
+  created_at         DateTime? @default(now()) @db.Timestamp(6)
+  user_id            Int?
+  user_balance_after Float?    @default(0) @db.Real
+
+  @@map("billing_records")
+}
+
+model PaymentOrder {
+  id                Int       @id @default(autoincrement())
+  workspace_id      Int?
+  amount            Float     @db.Real
+  channel           String
+  status            String?   @default("pending")
+  trade_no          String?
+  paid_at           DateTime? @db.Timestamp(6)
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  channel_config_id Int?
+  user_id           Int?
+  description       String?
+  metadata          String?
+  cancelled_at      DateTime? @db.Timestamp(6)
+  refunded_at       DateTime? @db.Timestamp(6)
+  coupon_id         Int?
+  original_amount   Float?    @db.Real
+  discount_amount   Float?    @db.Real
+  expires_at        DateTime? @db.Timestamptz(6)
+
+  @@map("payment_orders")
+}
+
+model Coupon {
+  id              Int       @id @default(autoincrement())
+  name            String
+  description     String?
+  type            String?   @default("threshold_fixed")
+  threshold       Float?    @default(0) @db.Real
+  discount_amount Float?    @default(0) @db.Real
+  discount_rate   Float?    @default(0) @db.Real
+  max_uses        Int?      @default(0)
+  used_count      Int?      @default(0)
+  valid_start     DateTime? @db.Timestamp(6)
+  valid_end       DateTime? @db.Timestamp(6)
+  is_active       Boolean?  @default(true)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+
+  @@map("coupons")
+}
+
+model UserCoupon {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  coupon_id  Int
+  status     String?   @default("unused")
+  order_id   Int?
+  issued_at  DateTime? @default(now()) @db.Timestamp(6)
+  used_at    DateTime? @db.Timestamp(6)
+  expires_at DateTime? @db.Timestamp(6)
+
+  @@map("user_coupons")
+}
+
+model UserDefaults {
+  id             Int       @id @default(autoincrement())
+  tpm            Int?      @default(10000000)
+  rpm            Int?      @default(100)
+  tpd            Int?      @default(10000000)
+  max_concurrent Int?      @default(100)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@map("user_defaults")
+}
+
+model IpBlacklist {
+  id         Int                 @id @default(autoincrement())
+  ip         Unsupported("cidr")
+  reason     String?
+  enabled    Boolean?            @default(true)
+  created_by Int?
+  created_at DateTime?           @default(now()) @db.Timestamp(6)
+  expires_at DateTime?           @db.Timestamp(6)
+
+  @@map("ip_blacklists")
+}
+
+model billing_logs {
+  id         Int       @id @default(autoincrement())
+  action     String
+  data       String?
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model invoices {
+  id                      Int       @id @default(autoincrement())
+  order_id                Int?
+  workspace_id            Int?
+  user_id                 Int?
+  amount                  Decimal   @default(0) @db.Decimal(12, 2)
+  status                  String?   @default("pending") @db.VarChar(32)
+  invoice_no              String?   @db.VarChar(64)
+  title                   String?   @db.VarChar(255)
+  error_message           String?
+  created_at              DateTime? @default(now()) @db.Timestamp(6)
+  issued_at               DateTime? @db.Timestamp(6)
+  failed_at               DateTime? @db.Timestamp(6)
+  review_status           String?   @default("pending") @db.VarChar(32)
+  invoice_url             String?
+  rejected_reason         String?
+  email                   String?   @db.VarChar(255)
+  tax_number              String?   @db.VarChar(50)
+  updated_at              DateTime? @default(now()) @db.Timestamp(6)
+  reviewed_at             DateTime? @db.Timestamp(6)
+  invoice_file_path       String?
+  invoice_file_created_at DateTime? @db.Timestamp(6)
+
+  @@index([order_id], map: "idx_invoices_order_id")
+  @@index([review_status], map: "idx_invoices_review_status")
+  @@index([status], map: "idx_invoices_status")
+  @@index([user_id], map: "idx_invoices_user_id")
+}
+
+model login_attempts {
+  user_id      Int       @id
+  failed_count Int?      @default(0)
+  window_start Int
+  locked_until Int?
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+  users        User      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model payment_channels {
+  id                Int       @id @default(autoincrement())
+  name              String
+  type              String
+  config            String    @default("{}")
+  env               String    @default("production")
+  priority          Int?      @default(0)
+  is_active         Boolean?  @default(true)
+  is_primary        Boolean?  @default(false)
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  use_qrcode        Boolean?  @default(false)
+  qr_expire_seconds Int?      @default(600)
+}
+
+model routing_config_versions {
+  id          Int       @id @default(autoincrement())
+  version     Int       @unique
+  config_data Json
+  is_active   Boolean?  @default(false)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model routing_sessions {
+  session_id     String    @id @db.VarChar(64)
+  user_id        String?   @db.VarChar(64)
+  config_version Int
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  last_activity  DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([config_version], map: "idx_routing_sessions_config_version")
+  @@index([last_activity], map: "idx_routing_sessions_last_activity")
+}
+
+model source_daily_model_stats {
+  id               Int       @id @default(autoincrement())
+  source_id        Int
+  date             String
+  model            String
+  requests         BigInt    @default(0)
+  tokens           BigInt    @default(0)
+  cost             Float     @default(0)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+  latency_ms_sum   BigInt    @default(0)
+  latency_ms_count BigInt    @default(0)
+
+  @@unique([source_id, date, model])
+  @@index([source_id, date], map: "idx_source_daily_model_stats_source_date")
+  @@index([source_id, model], map: "idx_source_daily_model_stats_source_model")
+}
+
+model source_hourly_model_stats {
+  id               Int       @id @default(autoincrement())
+  source_id        Int
+  hour             String    @db.VarChar(16)
+  model            String
+  requests         BigInt    @default(0)
+  tokens           BigInt    @default(0)
+  cost             Float     @default(0)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+  latency_ms_sum   BigInt    @default(0)
+  latency_ms_count BigInt    @default(0)
+
+  @@unique([source_id, hour, model])
+  @@index([source_id, hour], map: "idx_source_hourly_model_stats_source_hour")
+  @@index([source_id, model], map: "idx_source_hourly_model_stats_source_model")
+}
+
+model token_blocklist {
+  jti        String    @id
+  expires_at DateTime  @db.Timestamp(6)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([expires_at], map: "idx_token_blocklist_expires")
+}
+
+model transit_scans {
+  id             Int       @id @default(autoincrement())
+  request_log_id Int?
+  user_id        Int?
+  user_key_id    Int?
+  source_id      Int?
+  instance_id    Int?
+  workspace_id   Int?
+  model          String?   @db.VarChar(255)
+  protocol       String?   @db.VarChar(50)
+  status_code    Int?
+  result         String    @db.VarChar(20)
+  matched_rules  String?
+  details        String?
+  payload_sample String?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  request_uuid   String?   @db.VarChar(64)
+
+  @@index([created_at(sort: Desc)], map: "idx_transit_scans_created_at")
+  @@index([request_uuid], map: "idx_transit_scans_request_uuid")
+  @@index([result], map: "idx_transit_scans_result")
+  @@index([source_id], map: "idx_transit_scans_source_id")
+}
+
+model user_pins {
+  user_id         Int
+  pin_type        String    @db.VarChar(50)
+  password_hash   String?
+  failed_attempts Int?      @default(0)
+  locked_until    DateTime? @db.Timestamp(6)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+
+  @@id([user_id, pin_type])
+}

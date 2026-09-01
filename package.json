@@ -1,0 +1,37 @@
+{
+  "name": "ai-key-gateway",
+  "version": "1.0.0",
+  "description": "AI Key Gateway - API Proxy with Token Tracking",
+  "private": true,
+  "scripts": {
+    "preinstall": "node scripts/enforce-verdaccio.js",
+    "dev": "concurrently -n \"backend,admin,user\" -c \"blue,green,magenta\" \"npm run dev:backend\" \"npm run dev:admin\" \"npm run dev:user\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:admin": "cd frontend-admin && npm run dev",
+    "dev:user": "cd frontend-user && npm run dev",
+    "start": "cd backend && npm start",
+    "start:bg": "cd backend && cross-env SERVE_FRONTEND=true NODE_ENV=production node src/index.js > logs/npm-start.log 2>&1",
+    "start:win": "cd backend && start /b cross-env SERVE_FRONTEND=true NODE_ENV=production node src/index.js",
+    "start:all": "concurrently -n \"backend,admin,user\" -c \"blue,green,magenta\" \"npm run start:backend\" \"npm run start:admin\" \"npm run start:user\"",
+    "start:backend": "cd backend && npm start",
+    "start:admin": "cd frontend-admin && npm run preview",
+    "start:user": "cd frontend-user && npm run preview",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend-admin && npm install && cd ../frontend-user && npm install",
+    "build": "cd frontend-admin && npm run build && cd ../frontend-user && npm run build",
+    "nginx:generate": "node scripts/generate-nginx-conf.js",
+    "nginx": "cd nginx && node start.js",
+    "start:proxy": "concurrently -n \"backend,nginx\" -c \"blue,green\" \"npm start\" \"npm run nginx\"",
+    "manage": "node scripts/gateway-manager.js",
+    "start:pm2": "node scripts/gateway-manager.js --auto",
+    "registry:start": "bash scripts/verdaccio-start.sh",
+    "registry:stop": "bash scripts/verdaccio-stop.sh",
+    "registry:populate": "bash scripts/verdaccio-populate.sh",
+    "registry:populate-one": "bash scripts/verdaccio-populate-one.sh",
+    "registry:test-offline": "bash scripts/verdaccio-test-offline.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
+    "enquirer": "^2.4.1"
+  }
+}

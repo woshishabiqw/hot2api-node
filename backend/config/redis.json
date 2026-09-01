@@ -1,0 +1,8 @@
+{
+  "url": "redis://localhost:6379",
+  "enabled": true,
+  "database": 0,
+  "keyPrefix": "traa:",
+  "maxRetries": 3,
+  "retryDelay": 1000
+}

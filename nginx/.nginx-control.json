@@ -1,0 +1,11 @@
+{
+  "controlled": true,
+  "binary": "E:\\Desktop\\冷文件夹\\测试Traa\\nginx\\nginx.exe",
+  "capabilities": {
+    "limit_req": true,
+    "access": true,
+    "headers": true,
+    "rewrite": true
+  },
+  "timestamp": "2026-08-06T07:31:24.783Z"
+}

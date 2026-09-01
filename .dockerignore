@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.env.local
+dist
+*.db
+*.db-journal
+.DS_Store
+.planning
+.claude
+备份*.zip

@@ -1,0 +1,47 @@
+{
+  "name": "ai-key-gateway",
+  "version": "1.0.0",
+  "description": "AI Key Gateway - API Proxy with Token Tracking",
+  "main": "src/index.js",
+  "scripts": {
+    "preinstall": "node ../scripts/enforce-verdaccio.js",
+    "start": "node start.js",
+    "dev": "cross-env NODE_ENV=development nodemon src/index.js",
+    "init-db": "node src/config/init-db.js",
+    "init-test-db": "node scripts/init-test-db.js",
+    "test": "jest --runInBand --coverage --forceExit"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.8.0",
+    "alipay-sdk": "^4.14.0",
+    "axios": "^1.6.7",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "nodemailer": "^9.0.1",
+    "pg": "^8.21.0",
+    "prisma": "^7.8.0",
+    "qrcode": "^1.5.4",
+    "redis": "^5.12.1",
+    "rotating-file-stream": "^3.2.9",
+    "stripe": "^22.2.1",
+    "svg-captcha": "^1.4.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^10.0.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.4.1",
+    "@types/nodemailer": "^8.0.1",
+    "cross-env": "^10.1.0",
+    "jest": "^30.4.2",
+    "node-windows": "^1.0.0-beta.8",
+    "nodemon": "^3.0.3",
+    "supertest": "^7.2.2"
+  }
+}

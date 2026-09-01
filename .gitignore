@@ -1,0 +1,106 @@
+# Dependencies
+node_modules/
+*/node_modules/
+backend/node-v22/node_modules/
+.pnp
+.pnp.js
+
+# Package manager
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Coverage & test
+coverage/
+.nyc_output/
+*.log
+test_output.log
+
+# Runtime / process
+*.pid
+*.seed
+*.pid.lock
+dump.rdb
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Logs (project specific)
+logs/
+*/logs/
+backend/logs/
+frontend-admin-ssr/logs/
+nginx/logs/
+backend/*.log
+frontend-admin/*.log
+frontend-user/*.log
+*.log
+
+# Database & generated data
+backend/database/*.db
+backend/database/*.db-journal
+backend/database.sqlite
+backend/invoices/
+backend/coverage/
+verdaccio-storage/
+backups/*.json
+backups/*.zip
+备份*.zip
+*.zip
+
+# Bundled runtimes
+backend/node-v22/
+
+# Backup & temp files
+*.bak
+backend/prisma/migrations.bak/
+backend/fix-*.js
+backend/tmp_*.js
+backend/test-env.js
+backend/tests/sources-backup.json
+
+# Runtime config / secrets
+backend/config/sql.json
+config/server.json
+config/twopass.json
+
+# Runtime data dumps
+login.json
+new_order.json
+webbridge_payload.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project planning / agent artifacts
+.claude/
+.continue-here.md
+.planning/
+.tmp-pw-test/
+
+# Screenshots / test artifacts
+uitest-*.png
+scripts/.citations-wait.png
+xihai.png
+
+# Keep example env
+!.env.example
