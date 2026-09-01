@@ -1,5 +1,5 @@
 /**
- * Security middleware for Fuck Gateway
+ * Security middleware for F***(法克) Gateway
  * - Security headers
  * - Input sanitization (XSS prevention)
  * - SQL injection checks

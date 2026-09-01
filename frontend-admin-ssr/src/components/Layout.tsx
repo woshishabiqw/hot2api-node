@@ -118,7 +118,7 @@ export default function Layout({ children }) {
       )}>
         <div className="flex flex-col h-full">
           <div className="flex flex-col justify-center h-16 px-6 border-b">
-            <span className="text-xl font-bold">Fuck中转站管理</span>
+            <span className="text-xl font-bold">F***(法克)中转站管理</span>
             <span className="text-[10px] text-muted-foreground mt-0.5">点击侧边栏外部即可关闭侧边栏</span>
           </div>
           
@@ -240,7 +240,7 @@ export default function Layout({ children }) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="ml-4 font-semibold">Fuck中转站管理</span>
+          <span className="ml-4 font-semibold">F***(法克)中转站管理</span>
         </header>
 
         <div className="p-4 md:p-6">

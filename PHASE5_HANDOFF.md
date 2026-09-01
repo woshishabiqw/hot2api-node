@@ -92,7 +92,7 @@ if (loading || !stats) return <SkeletonDashboard />;
    const swaggerOptions = {
      definition: {
        openapi: '3.0.0',
-       info: { title: 'Fuck Gateway API', version: '1.0.0' },
+       info: { title: 'F***(法克) Gateway API', version: '1.0.0' },
      },
      apis: ['./src/routes/*.js'],
    };

@@ -92,7 +92,7 @@ export default function Layout({ children }) {
       )}>
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between h-16 px-6 border-b">
-            <span className="text-xl font-bold text-primary">Fuck网关</span>
+            <span className="text-xl font-bold text-primary">F***(法克)网关</span>
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
               <X className="w-5 h-5" />
             </button>
@@ -216,7 +216,7 @@ export default function Layout({ children }) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="ml-4 font-semibold">Fuck网关</span>
+          <span className="ml-4 font-semibold">F***(法克)网关</span>
         </header>
 
         <div ref={contentRef} className="flex-1 flex flex-col min-h-0 pt-6 px-6 pb-6 overflow-y-auto custom-scrollbar">

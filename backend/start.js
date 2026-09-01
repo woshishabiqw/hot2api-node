@@ -142,7 +142,7 @@ function printAccessUrls() {
   const userPort = cfg.ports.user;
   console.log('');
   console.log('==================================================');
-  console.log('   Fuck Gateway - npm start');
+  console.log('   F***(法克) Gateway - npm start');
   console.log('==================================================');
   console.log('  API access:');
   ips.forEach(ip => console.log(`    http://${ip}:${apiPort}`));

@@ -578,7 +578,7 @@ const startServer = async () => {
 
   apiApp.get('/', (req, res) => {
     res.json({
-      name: 'Fuck Gateway',
+      name: 'F***(法克) Gateway',
       version: '1.0.0',
       endpoints: {
         openai: {
@@ -626,7 +626,7 @@ const startServer = async () => {
     definition: {
       openapi: '3.0.0',
       info: {
-        title: 'Fuck Gateway API',
+        title: 'F***(法克) Gateway API',
         version: '1.0.0',
         description: 'API Gateway for LLM services'
       },
@@ -795,7 +795,7 @@ const startServer = async () => {
       : '';
     console.log(`
   ==================================================
-         Fuck Gateway - Running
+         F***(法克) Gateway - Running
   ==================================================
   Access URLs (LAN):
 ${ipLines}
